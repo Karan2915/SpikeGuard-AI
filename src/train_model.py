@@ -24,11 +24,18 @@ expected, since no public dataset gives real merchant review costs.
 import pandas as pd
 import numpy as np
 import joblib
+from pathlib import Path
 from xgboost import XGBClassifier
 from sklearn.metrics import (
     precision_recall_curve, precision_score, recall_score,
     f1_score, confusion_matrix, classification_report, average_precision_score
 )
+
+# resolves to project/Datasets and project/src regardless of machine/OS,
+# as long as this script sits in project/src/
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = PROJECT_ROOT / "Datasets"
+SRC_DIR = PROJECT_ROOT / "src"
 
 # ---- cost assumptions (tune these) ----
 FALSE_POSITIVE_COST = 150      # Rs, manual review cost per wrongly flagged organic spike
@@ -44,8 +51,8 @@ FEATURE_COLS = [
 
 
 def load_data():
-    train = pd.read_csv("/home/claude/spikeguard/spikeguard_train.csv")
-    test = pd.read_csv("/home/claude/spikeguard/spikeguard_test.csv")
+    train = pd.read_csv(DATA_DIR / "spikeguard_train.csv")
+    test = pd.read_csv(DATA_DIR / "spikeguard_test.csv")
     y_train = (train["spike_type"] == "anomalous").astype(int)
     y_test = (test["spike_type"] == "anomalous").astype(int)
     X_train = train[FEATURE_COLS]
@@ -117,13 +124,13 @@ def main():
     print(f"Total cost at optimal {best_t:.2f} threshold: Rs {best_cost:,.0f} ({fp} FP, {fn} FN)")
     print(f"Savings from cost-aware thresholding: Rs {default_cost - best_cost:,.0f}")
 
-    joblib.dump(model, "/home/claude/spikeguard/spikeguard_model.joblib")
+    joblib.dump(model, SRC_DIR / "spikeguard_model.joblib")
     joblib.dump(
         {"threshold": best_t, "feature_cols": FEATURE_COLS,
          "fp_cost": FALSE_POSITIVE_COST, "fn_cost": FALSE_NEGATIVE_COST},
-        "/home/claude/spikeguard/spikeguard_config.joblib",
+        SRC_DIR / "spikeguard_config.joblib",
     )
-    results_df.to_csv("/home/claude/spikeguard/threshold_sweep.csv", index=False)
+    results_df.to_csv(SRC_DIR / "threshold_sweep.csv", index=False)
     print("\nSaved: spikeguard_model.joblib, spikeguard_config.joblib, threshold_sweep.csv")
 
 

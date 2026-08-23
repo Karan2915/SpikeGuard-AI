@@ -25,6 +25,13 @@ This is a SIMULATION. No real merchant or buyer data is used or represented.
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass
+from pathlib import Path
+
+# resolves to the project's Datasets/ folder regardless of which machine
+# or OS this runs on, as long as the folder layout is: project/src/generate_spikes.py
+# and project/Datasets/
+DATA_DIR = Path(__file__).resolve().parent.parent / "Datasets"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 RNG = np.random.default_rng(42)
 
@@ -256,7 +263,7 @@ def add_overlap_and_label_noise(df):
 
 if __name__ == "__main__":
     df = generate_dataset()
-    out_path = "/home/claude/spikeguard/spikeguard_spikes.csv"
+    out_path = DATA_DIR / "spikeguard_spikes.csv"
     df.to_csv(out_path, index=False)
 
     print(f"Generated {len(df)} labeled spikes -> {out_path}")
@@ -274,7 +281,7 @@ if __name__ == "__main__":
     train_df, test_df = train_test_split(
         df, test_size=0.25, stratify=df["spike_type"], random_state=42
     )
-    train_df.to_csv("/home/claude/spikeguard/spikeguard_train.csv", index=False)
-    test_df.to_csv("/home/claude/spikeguard/spikeguard_test.csv", index=False)
+    train_df.to_csv(DATA_DIR / "spikeguard_train.csv", index=False)
+    test_df.to_csv(DATA_DIR / "spikeguard_test.csv", index=False)
     print(f"\nTrain: {len(train_df)} rows -> spikeguard_train.csv")
     print(f"Test:  {len(test_df)} rows -> spikeguard_test.csv")
