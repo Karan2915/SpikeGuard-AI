@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+
+# Environment/secrets
+.env
+
+# Large/raw datasets
+Datasets/raw/
+Datasets/*.xlsx
+Datasets/*.xls
+
+# Model files
+models/
+*.pkl
+*.joblib
+
+# Streamlit
+.streamlit/secrets.toml
