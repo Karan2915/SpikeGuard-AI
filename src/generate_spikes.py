@@ -62,6 +62,28 @@ def simulate_organic_spike(seller_id, start_day):
     n_orders = int(peak_multiplier * baseline * duration * RNG.uniform(0.8, 1.2))
     n_orders = max(n_orders, 8)
 
+    # occasional "hard" organic case: a flash sale that ramps unusually fast
+    # and pulls in more first-time buyers than typical -- looks closer to
+    # anomalous on ramp/new-buyer features alone, forcing the model to rely
+    # on the full feature set rather than any single signal
+    is_hard_case = RNG.random() < 0.18
+    if is_hard_case:
+        peak_multiplier = RNG.uniform(6, 11)
+        duration = int(RNG.integers(1, 3))
+        n_orders = int(peak_multiplier * baseline * duration * RNG.uniform(0.8, 1.2))
+        n_orders = max(n_orders, 8)
+        pct_new_buyers = RNG.uniform(0.55, 0.78)
+        n_distinct_states = int(RNG.integers(3, 7))
+        mean_delivery_days = max(RNG.uniform(3, 7), 1.5)
+        return_rate = RNG.uniform(0.15, 0.32)
+        refund_claim_speed_days = RNG.uniform(2, 5)
+    else:
+        pct_new_buyers = RNG.uniform(0.3, 0.6)
+        n_distinct_states = int(RNG.integers(4, 15))
+        mean_delivery_days = max(RNG.normal(11, 3), 1.5)
+        return_rate = RNG.uniform(0.01, 0.09)
+        refund_claim_speed_days = RNG.uniform(5, 15)
+
     return Spike(
         seller_id=seller_id,
         spike_type="organic",
@@ -70,13 +92,13 @@ def simulate_organic_spike(seller_id, start_day):
         baseline_daily_orders=baseline,
         peak_daily_orders=baseline * peak_multiplier,
         n_orders=n_orders,
-        pct_new_buyers=RNG.uniform(0.3, 0.6),          # mix of new + repeat customers
-        n_distinct_states=int(RNG.integers(4, 15)),     # healthy geographic spread (Olist median~4, up to 27)
-        mean_delivery_days=RNG.normal(11, 2),           # close to real Olist median (~10-12 days)
-        std_delivery_days=RNG.uniform(6, 10),
-        return_rate=RNG.uniform(0.01, 0.05),            # near Olist baseline cancel/unavailable rate (~1.2%)
-        refund_claim_speed_days=RNG.uniform(8, 15),      # refunds, when they happen, take normal time
-        refund_claim_speed_std=RNG.uniform(3, 6),
+        pct_new_buyers=pct_new_buyers,
+        n_distinct_states=n_distinct_states,
+        mean_delivery_days=mean_delivery_days,
+        std_delivery_days=RNG.uniform(5, 10) if not is_hard_case else RNG.uniform(1.5, 4),
+        return_rate=return_rate,
+        refund_claim_speed_days=refund_claim_speed_days,
+        refund_claim_speed_std=RNG.uniform(2, 6) if not is_hard_case else RNG.uniform(0.5, 2),
     )
 
 
@@ -88,6 +110,27 @@ def simulate_anomalous_spike(seller_id, start_day):
     n_orders = int(peak_multiplier * baseline * duration * RNG.uniform(0.9, 1.1))
     n_orders = max(n_orders, 15)
 
+    # occasional "hard" anomalous case: a smaller, less extreme ring that
+    # partially mimics organic behavior (wider geo spread, slower fake
+    # delivery/return cycle) -- a less sloppy fraud ring, closer to the
+    # detection boundary. Ranges here deliberately overlap the organic
+    # hard-case ranges above, so no single feature perfectly separates
+    # the classes -- the model has to combine several signals.
+    is_hard_case = RNG.random() < 0.2
+    if is_hard_case:
+        peak_multiplier = RNG.uniform(5, 12)
+        pct_new_buyers = RNG.uniform(0.6, 0.85)
+        n_distinct_states = int(RNG.integers(2, 6))
+        mean_delivery_days = RNG.uniform(1.5, 5)
+        return_rate = RNG.uniform(0.2, 0.45)
+        refund_claim_speed_days = RNG.uniform(1.5, 4)
+    else:
+        pct_new_buyers = RNG.uniform(0.85, 1.0)
+        n_distinct_states = int(RNG.integers(1, 3))
+        mean_delivery_days = RNG.uniform(0.2, 1.5)
+        return_rate = RNG.uniform(0.75, 1.0)
+        refund_claim_speed_days = RNG.uniform(0.1, 1.0)
+
     return Spike(
         seller_id=seller_id,
         spike_type="anomalous",
@@ -96,13 +139,13 @@ def simulate_anomalous_spike(seller_id, start_day):
         baseline_daily_orders=baseline,
         peak_daily_orders=baseline * peak_multiplier,
         n_orders=n_orders,
-        pct_new_buyers=RNG.uniform(0.85, 1.0),          # almost all freshly-created accounts
-        n_distinct_states=int(RNG.integers(1, 3)),       # unnaturally narrow clustering vs organic
-        mean_delivery_days=RNG.uniform(0.2, 1.5),        # near-instant fake "delivery"
-        std_delivery_days=RNG.uniform(0.1, 0.5),
-        return_rate=RNG.uniform(0.75, 1.0),              # near-100%, matching Meesho pattern
-        refund_claim_speed_days=RNG.uniform(0.1, 1.0),   # refund claimed almost immediately after "delivery"
-        refund_claim_speed_std=RNG.uniform(0.05, 0.3),
+        pct_new_buyers=pct_new_buyers,
+        n_distinct_states=n_distinct_states,
+        mean_delivery_days=mean_delivery_days,
+        std_delivery_days=RNG.uniform(0.1, 1.0),
+        return_rate=return_rate,
+        refund_claim_speed_days=refund_claim_speed_days,
+        refund_claim_speed_std=RNG.uniform(0.05, 0.5),
     )
 
 
@@ -113,26 +156,25 @@ def spike_to_features(spike: Spike) -> dict:
     a real classifier has to learn a boundary, not just read off the label.
     """
     ramp_rate = spike.peak_daily_orders / max(spike.baseline_daily_orders, 0.1)
-    ramp_rate *= RNG.uniform(0.9, 1.1)
+    ramp_rate *= RNG.uniform(0.85, 1.15)
 
-    geo_entropy = spike.n_distinct_states / max(spike.n_orders, 1) * spike.n_orders  # placeholder, replaced below
     # normalized geographic entropy proxy: distinct states relative to a log of order count
     geo_entropy = spike.n_distinct_states / np.log2(spike.n_orders + 2)
-    geo_entropy *= RNG.uniform(0.9, 1.1)
+    geo_entropy *= RNG.uniform(0.85, 1.15)
 
     return {
         "seller_id": spike.seller_id,
         "spike_type": spike.spike_type,   # label
-        "n_orders": spike.n_orders,
+        "n_orders": max(int(spike.n_orders + RNG.normal(0, spike.n_orders * 0.08)), 1),
         "duration_days": spike.duration_days,
-        "ramp_rate_vs_baseline": round(ramp_rate, 3),
-        "pct_new_buyers": round(np.clip(spike.pct_new_buyers + RNG.normal(0, 0.03), 0, 1), 3),
-        "n_distinct_states": spike.n_distinct_states,
-        "geo_entropy": round(geo_entropy, 3),
-        "mean_delivery_days": round(max(spike.mean_delivery_days + RNG.normal(0, 0.5), 0), 3),
-        "std_delivery_days": round(max(spike.std_delivery_days, 0.05), 3),
-        "return_rate": round(np.clip(spike.return_rate + RNG.normal(0, 0.03), 0, 1), 3),
-        "refund_claim_speed_days": round(max(spike.refund_claim_speed_days, 0.05), 3),
+        "ramp_rate_vs_baseline": round(max(ramp_rate, 0.1), 3),
+        "pct_new_buyers": round(np.clip(spike.pct_new_buyers + RNG.normal(0, 0.06), 0, 1), 3),
+        "n_distinct_states": max(int(spike.n_distinct_states + RNG.normal(0, 0.8)), 1),
+        "geo_entropy": round(max(geo_entropy, 0.01), 3),
+        "mean_delivery_days": round(max(spike.mean_delivery_days + RNG.normal(0, 1.2), 0.05), 3),
+        "std_delivery_days": round(max(spike.std_delivery_days + RNG.normal(0, 0.3), 0.05), 3),
+        "return_rate": round(np.clip(spike.return_rate + RNG.normal(0, 0.06), 0, 1), 3),
+        "refund_claim_speed_days": round(max(spike.refund_claim_speed_days + RNG.normal(0, 0.8), 0.05), 3),
         "refund_claim_speed_std": round(max(spike.refund_claim_speed_std, 0.02), 3),
     }
 
@@ -149,6 +191,66 @@ def generate_dataset(n_sellers=N_SELLERS, n_days=N_DAYS):
             rows.append(spike_to_features(simulate_anomalous_spike(seller_id, start_day)))
 
     df = pd.DataFrame(rows)
+    df = add_overlap_and_label_noise(df)
+    return df
+
+
+# typical central values per class, used as blend targets below (rough
+# midpoints of each class's normal range, not tied to any single spike)
+BLEND_TARGETS = {
+    "organic":   {"ramp_rate_vs_baseline": 4.0, "pct_new_buyers": 0.45, "n_distinct_states": 8,
+                  "mean_delivery_days": 10.5, "return_rate": 0.05, "refund_claim_speed_days": 9.0},
+    "anomalous": {"ramp_rate_vs_baseline": 30.0, "pct_new_buyers": 0.88, "n_distinct_states": 2,
+                  "mean_delivery_days": 1.2, "return_rate": 0.8, "refund_claim_speed_days": 0.8},
+}
+BLENDABLE_FEATURES = list(BLEND_TARGETS["organic"].keys())
+
+
+def add_overlap_and_label_noise(df):
+    """Make the two classes genuinely overlap in feature space, not just on
+    paper. Without this, correlated 'hard case' clusters still form two
+    separable groups even though each individual feature's range overlaps --
+    real classifiers get near-perfect scores on data like that, which is a
+    red flag rather than a good result. Two adjustments:
+
+    1. For a random subset of spikes, independently blend a random handful
+       of features partway toward the OPPOSITE class's typical values. Doing
+       this per-feature and independently (rather than as one correlated
+       cluster) breaks the multivariate separability.
+    2. Flip a small fraction of labels outright, simulating real-world
+       annotation ambiguity (cases where even a human reviewer would
+       disagree on how to classify the spike).
+    """
+    df = df.copy()
+    n = len(df)
+
+    # 1. independent per-feature blending toward the opposite class
+    blend_mask = RNG.random(n) < 0.35
+    for idx in df.index[blend_mask]:
+        row_type = df.at[idx, "spike_type"]
+        opposite_type = "anomalous" if row_type == "organic" else "organic"
+        n_features_to_blend = RNG.integers(2, 5)
+        chosen = RNG.choice(BLENDABLE_FEATURES, size=n_features_to_blend, replace=False)
+        for feat in chosen:
+            w = RNG.uniform(0.25, 0.55)
+            target = BLEND_TARGETS[opposite_type][feat]
+            current = df.at[idx, feat]
+            blended = current * (1 - w) + target * w
+            # keep values in sane ranges
+            if feat in ("pct_new_buyers", "return_rate"):
+                blended = float(np.clip(blended, 0, 1))
+            elif feat == "n_distinct_states":
+                blended = max(int(round(blended)), 1)
+            else:
+                blended = max(blended, 0.05)
+            df.at[idx, feat] = round(blended, 3) if isinstance(blended, float) else blended
+
+    # 2. small amount of outright label noise (ambiguous ground truth)
+    flip_mask = RNG.random(n) < 0.03
+    df.loc[flip_mask, "spike_type"] = df.loc[flip_mask, "spike_type"].map(
+        {"organic": "anomalous", "anomalous": "organic"}
+    )
+
     return df
 
 
