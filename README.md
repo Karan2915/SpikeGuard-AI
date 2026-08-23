@@ -1,42 +1,75 @@
 # 🛡️ SpikeGuard AI
 
-### AI-powered merchant risk intelligence for distinguishing genuine sales surges from suspicious transaction spikes.
+### AI-Powered Merchant Risk Intelligence for Suspicious Transaction Spikes
 
-> **A merchant-side risk engine that asks one critical question:**
->
-> **"Is this sudden surge in transaction volume a genuine business event — or a behavioral pattern that could turn into a loss?"**
+> **Is a sudden transaction spike a genuine sales surge — or a suspicious behavioral pattern?**
+
+SpikeGuard AI is a merchant-side risk intelligence system that analyzes sudden changes in transaction activity and determines whether a detected spike appears **organic** or **anomalous**.
+
+Instead of looking at individual transactions in isolation, SpikeGuard analyzes the **behavioral characteristics of an entire transaction spike** — including transaction acceleration, new-buyer concentration, geographic behavior, delivery patterns, return behavior, and refund timing.
+
+The system produces a **risk score**, compares it against a **cost-aware decision threshold**, and explains the behavioral signals that contributed to the prediction.
 
 ---
 
-## 🚨 The Problem
+## 📌 Table of Contents
 
-A sudden increase in transaction volume is not automatically a good thing.
+- [Problem Statement](#-problem-statement)
+- [Why SpikeGuard](#-why-spikeguard)
+- [Solution Overview](#-solution-overview)
+- [Core Idea](#-core-idea)
+- [How SpikeGuard Works](#-how-spikeguard-works)
+- [System Architecture](#-system-architecture)
+- [End-to-End Pipeline](#-end-to-end-pipeline)
+- [Machine Learning Approach](#-machine-learning-approach)
+- [Feature Engineering](#-feature-engineering)
+- [Cost-Aware Decision Engine](#-cost-aware-decision-engine)
+- [Explainability](#-explainability)
+- [Dashboard](#-dashboard)
+- [Dataset](#-dataset)
+- [Synthetic Data Generation](#-synthetic-data-generation)
+- [Project Structure](#-project-structure)
+- [Technology Stack](#-technology-stack)
+- [Installation](#-installation)
+- [Running the Project](#-running-the-project)
+- [Example Workflow](#-example-workflow)
+- [Model Evaluation](#-model-evaluation)
+- [Risk Decision Flow](#-risk-decision-flow)
+- [Design Principles](#-design-principles)
+- [Limitations](#-limitations)
+- [Future Improvements](#-future-improvements)
+- [Roadmap](#-roadmap)
+- [Responsible Use](#-responsible-use)
+- [Reproducibility](#-reproducibility)
+- [Project Status](#-project-status)
+- [Author](#-author)
+- [License](#-license)
 
-For a merchant, a large spike can represent:
+---
+
+# 🚨 Problem Statement
+
+A sudden increase in transaction volume is not necessarily a sign of fraud or malicious activity.
+
+For a merchant, transaction volume can increase because of:
 
 - A successful marketing campaign
-- A festival or seasonal sale
-- A product going viral
-- A genuine customer surge
+- A flash sale
+- Seasonal demand
+- A viral product
+- A new product launch
+- Expansion into a new customer segment
+- A coordinated or suspicious transaction pattern
+- Abnormal return or refund behavior
+- Unusual geographic activity
+- Sudden changes in customer composition
 
-But the same spike can also be associated with:
+This creates a difficult merchant-risk problem:
 
-- Coordinated abusive behavior
-- Return/refund abuse
-- Unusual customer concentration
-- Geographic anomalies
-- Abnormal transaction behavior
-- Other merchant-level risk patterns
+> **How can a payment ecosystem distinguish a legitimate business surge from a suspicious transaction spike?**
 
-The difficult part is that **volume alone cannot distinguish these situations**.
-
-A merchant may see:
+A simple rule such as:
 
 ```text
-Normal baseline
-      ↓
-   40 orders/day
-
-Sudden spike
-      ↓
-  220 orders/day
+IF transaction volume increases by 5×
+THEN flag the merchant
