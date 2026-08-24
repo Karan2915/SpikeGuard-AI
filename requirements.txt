@@ -1,0 +1,7 @@
+numpy>=1.26
+pandas>=2.1
+scikit-learn>=1.4
+xgboost>=2.0
+shap>=0.44
+streamlit>=1.32
+joblib>=1.3
