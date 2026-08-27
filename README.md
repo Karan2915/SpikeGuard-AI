@@ -1,76 +1,125 @@
-# 🛡️ SpikeGuard AI
+# 🛡️ SpikeGuard
 
-### E-commerce Spike Anomaly Detection & Explainability System
+### Merchant-Side Order Spike Risk Detection using Machine Learning
 
-SpikeGuard AI is a machine-learning based system designed to identify suspicious
-transaction-volume spikes in e-commerce merchant activity.
+SpikeGuard is a machine-learning based risk assessment system designed to help merchants identify whether a sudden increase in order activity is likely to be an **organic sales spike** or a potentially **anomalous order pattern associated with return/refund abuse**.
 
-The system classifies a spike as either:
+The project combines:
 
-- 🟢 **Organic** — a legitimate sales surge
-- 🔴 **Anomalous** — a suspicious spike pattern that may resemble organized
-  return/refund abuse
-
-Unlike a simple binary classifier, SpikeGuard also provides a **risk score,
-cost-aware decision threshold, and SHAP-based feature explanation** for each
-prediction.
-
----
-
-## 🚀 Project Overview
-
-Sudden increases in order volume are not always genuine sales events.
-
-A merchant may experience a legitimate promotion-driven spike, but suspicious
-activity can also produce unusual combinations of:
-
-- Order volume
-- Volume growth relative to baseline
-- New buyer concentration
-- Geographic distribution
-- Delivery behavior
-- Return/cancellation behavior
-- Refund-claim timing
-
-SpikeGuard uses these behavioral signals to estimate the probability that a
-spike is anomalous.
-
-The project focuses on **decision support and explainability**, rather than
-claiming that model predictions are causal proof of fraud.
+- Cost-sensitive machine learning
+- Feature engineering
+- XGBoost classification
+- Business-cost-based threshold optimization
+- SHAP explainability
+- Held-out test evaluation
+- Interactive Streamlit dashboard
+- Manual risk assessment
+- Model deployment
 
 ---
 
-## 🏗️ System Architecture
+## 🚀 Live Demo
+
+**Streamlit Application:**
+
+https://spikeguard-ai.streamlit.app
+
+The deployed application allows users to:
+
+- Browse spikes from the held-out test dataset
+- Filter flagged and non-flagged spikes
+- Inspect individual predictions
+- Enter custom spike characteristics
+- Receive a risk score
+- View the model's decision threshold
+- See whether a spike is flagged
+- View SHAP-based feature explanations
+
+---
+
+# 📌 Problem Statement
+
+Sudden increases in order volume are not necessarily fraudulent.
+
+A merchant may experience a legitimate spike because of:
+
+- A sale
+- A product launch
+- Seasonal demand
+- Marketing campaigns
+- Influencer promotions
+- Festival periods
+- Other genuine business events
+
+However, abnormal spikes can also be associated with coordinated abuse.
+
+For example, a suspicious spike may involve:
+
+- An unusually large increase in order volume
+- A high proportion of first-time buyers
+- Unusual geographic distribution
+- High return or cancellation rates
+- Unusual refund behavior
+- Highly variable delivery patterns
+- Very fast refund claims
+
+A simple rule such as:
+
+> "If orders increase by more than X%, flag the merchant"
+
+would generate many false positives.
+
+SpikeGuard instead combines multiple behavioral signals and produces a probability-based risk score.
+
+---
+
+# 🎯 Project Objective
+
+The objective of SpikeGuard is to build a prototype merchant-side risk engine that answers:
+
+> **"Does this order spike look more like a normal sales event or an anomalous pattern requiring investigation?"**
+
+The system produces:
+
+1. A risk probability
+2. A binary decision
+3. An explanation of the factors influencing the prediction
+
+---
+
+# 🧠 How SpikeGuard Works
+
+The overall pipeline is:
 
 ```text
-                    Synthetic Spike Data
-                           │
-                           ▼
-                  Feature Generation
-                           │
-                           ▼
-                    Train / Test Split
-                           │
-                           ▼
-                 Cost-Sensitive XGBoost
-                           │
-                           ▼
-                  Validation Threshold
-                       Selection
-                           │
-                           ▼
-                 Locked Threshold = 0.06
-                           │
-                           ▼
-                  Held-Out Test Set
-                           │
-             ┌─────────────┴─────────────┐
-             ▼                           ▼
-       Risk Prediction              SHAP Analysis
-             │                           │
-             ▼                           ▼
-     Flagged / Organic          Feature Attribution
-             │
-             └─────────────┬─────────────┘
-                           ▼
-                  Streamlit Dashboard
+Merchant / Test Data
+        │
+        ▼
+Feature Engineering
+        │
+        ▼
+Data Preparation
+        │
+        ▼
+Cost-Sensitive XGBoost Model
+        │
+        ▼
+Validation Predictions
+        │
+        ▼
+Cost-Based Threshold Optimization
+        │
+        ▼
+Locked Decision Threshold
+        │
+        ▼
+Held-Out Test Evaluation
+        │
+        ▼
+Risk Score + Decision
+        │
+        ▼
+SHAP Explanation
+        │
+        ▼
+Streamlit Dashboard
