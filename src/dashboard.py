@@ -16,6 +16,7 @@ import joblib
 import shap
 import streamlit as st
 from pathlib import Path
+from sklearn.metrics import average_precision_score
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "Datasets"
@@ -117,14 +118,19 @@ def render_metric_cards(test_df, fn_cost):
     total = len(test_df)
     flagged_count = int(test_df["flagged"].sum())
     flagged_pct = (flagged_count / total * 100) if total else 0
-    exposure_guarded = flagged_count * fn_cost
+    exposure_flagged = flagged_count * fn_cost
+    pr_auc = average_precision_score(
+        (test_df["spike_type"] == "anomalous").astype(int), test_df["risk_score"]
+    )
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Spikes analyzed", f"{total:,}")
     c2.metric("Flagged as anomalous", f"{flagged_count:,}", f"{flagged_pct:.1f}% of total")
-    c3.metric("Est. exposure guarded", f"₹{exposure_guarded:,.0f}",
-              help="Flagged spikes × assumed loss per undetected ring (₹64,000). Illustrative, not a measured figure.")
-    c4.metric("Model PR-AUC", "0.95", help="Precision-recall AUC on the held-out test set.")
+    c3.metric("Est. exposure flagged", f"₹{exposure_flagged:,.0f}",
+              help="Flagged spikes × assumed loss per undetected ring (₹64,000). "
+                   "This is total exposure surfaced for review, not confirmed prevented loss — "
+                   "some flagged spikes will be false positives, and ground truth isn't known at prediction time.")
+    c4.metric("Model PR-AUC", f"{pr_auc:.3f}", help="Precision-recall AUC, computed live on this held-out test set.")
 
 
 def main():
