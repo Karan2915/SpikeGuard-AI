@@ -564,6 +564,9 @@ def spike_to_features(spike: Spike) -> dict:
         "spike_type":
             spike.spike_type,
 
+        "start_day":
+            spike.start_day,
+
         "n_orders":
             max(n_orders, 1),
 
