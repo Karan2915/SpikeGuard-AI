@@ -10,7 +10,7 @@ and see the risk score, flag decision, and SHAP-based explanation.
 Run with:  streamlit run dashboard.py
 """
 
-import pandas as pd 
+import pandas as pd
 import numpy as np
 import joblib
 import shap
@@ -50,6 +50,13 @@ FEATURE_RANGES = {
     "refund_claim_speed_days": (0.05, 16.0, 9.0),
     "refund_claim_speed_std": (0.02, 6.0, 3.5),
 }
+
+# Used only if the early model file isn't present, so the Upload tab's
+# help text still shows something sensible.
+EARLY_FEATURE_FALLBACK = [
+    "n_orders", "duration_days", "ramp_rate_vs_baseline",
+    "pct_new_buyers", "n_distinct_states", "geo_entropy",
+]
 
 
 @st.cache_resource
@@ -367,19 +374,36 @@ def main():
     with tab5:
         st.subheader("Upload your own order-spike data")
         st.caption(
-            "Upload a CSV with one row per spike. Required columns: "
-            + ", ".join(f"`{c}`" for c in feature_cols)
+            "SpikeGuard scores your file with whichever model matches the columns you provide — "
+            "you don't need delivery/return data to get a score. If your file has only the leading "
+            "columns (available at order-placement time), you get an **Early Warning** score. If it "
+            "also has delivery/return columns, you get the more precise **Confirmed Risk** score."
         )
 
         with st.expander("What should my CSV look like?"):
             st.write(
-                "Each row represents one detected order-volume spike for a seller, "
-                "already summarized into these numbers (not raw per-order data):"
+                "**Option A — Early Warning only** (score orders while they're still coming in, "
+                "before any delivery or return data exists). Required columns:"
             )
-            sample = pd.DataFrame([{c: FEATURE_RANGES[c][2] for c in feature_cols}])
-            st.dataframe(sample, use_container_width=True)
-            csv_template = sample.to_csv(index=False).encode("utf-8")
-            st.download_button("Download a template CSV", csv_template, "spikeguard_template.csv", "text/csv")
+            early_cols = early_config["feature_cols"] if early_model is not None else EARLY_FEATURE_FALLBACK
+            sample_early = pd.DataFrame([{c: FEATURE_RANGES[c][2] for c in early_cols}])
+            st.dataframe(sample_early, use_container_width=True)
+            st.download_button(
+                "Download Early Warning template", sample_early.to_csv(index=False).encode("utf-8"),
+                "spikeguard_early_template.csv", "text/csv", key="early_template",
+            )
+
+            st.write(
+                "**Option B — Confirmed Risk** (more precise, but needs delivery/return data — "
+                "use this once orders have been delivered and any returns have played out). "
+                "Required columns: all of the above, plus:"
+            )
+            sample_full = pd.DataFrame([{c: FEATURE_RANGES[c][2] for c in feature_cols}])
+            st.dataframe(sample_full, use_container_width=True)
+            st.download_button(
+                "Download Confirmed Risk template", sample_full.to_csv(index=False).encode("utf-8"),
+                "spikeguard_confirmed_template.csv", "text/csv", key="confirmed_template",
+            )
 
         uploaded = st.file_uploader("Choose a CSV file", type=["csv"])
 
@@ -391,19 +415,36 @@ def main():
                 user_df = None
 
             if user_df is not None:
-                missing = [c for c in feature_cols if c not in user_df.columns]
-                if missing:
-                    st.error(
-                        "This file is missing required column(s): "
-                        + ", ".join(f"`{c}`" for c in missing)
-                        + ". Download the template above to see the expected format."
+                has_full = all(c in user_df.columns for c in feature_cols)
+                has_early = early_model is not None and all(c in user_df.columns for c in early_config["feature_cols"])
+
+                if has_full:
+                    active_cols, active_model, active_threshold, mode_label = (
+                        feature_cols, model, threshold, "Confirmed Risk"
+                    )
+                elif has_early:
+                    active_cols, active_model, active_threshold, mode_label = (
+                        early_config["feature_cols"], early_model, early_config["threshold"], "Early Warning"
                     )
                 else:
-                    extra = [c for c in user_df.columns if c not in feature_cols]
-                    if extra:
-                        st.info(f"Ignoring extra column(s) not used by the model: {', '.join(extra)}")
+                    missing_full = [c for c in feature_cols if c not in user_df.columns]
+                    active_cols = None
+                    st.error(
+                        "This file doesn't have enough columns for either model. For an Early Warning "
+                        "score you need at least: " + ", ".join(f"`{c}`" for c in
+                            (early_config["feature_cols"] if early_model is not None else EARLY_FEATURE_FALLBACK))
+                        + ". For a Confirmed Risk score you're missing: "
+                        + ", ".join(f"`{c}`" for c in missing_full)
+                        + ". Download a template above to see the expected format."
+                    )
 
-                    numeric_df = user_df[feature_cols].apply(pd.to_numeric, errors="coerce")
+                if active_cols is not None:
+                    st.info(f"Scoring with the **{mode_label}** model, based on the columns in your file.")
+                    extra = [c for c in user_df.columns if c not in active_cols]
+                    if extra:
+                        st.caption(f"Ignoring extra column(s) not used by this model: {', '.join(extra)}")
+
+                    numeric_df = user_df[active_cols].apply(pd.to_numeric, errors="coerce")
                     bad_rows = numeric_df[numeric_df.isna().any(axis=1)]
                     if len(bad_rows) > 0:
                         st.warning(
@@ -417,18 +458,18 @@ def main():
                     if len(clean_df) == 0:
                         st.error("No valid rows to score after checking for missing/non-numeric values.")
                     else:
-                        proba_upload = model.predict_proba(clean_numeric[feature_cols])[:, 1]
+                        proba_upload = active_model.predict_proba(clean_numeric[active_cols])[:, 1]
                         clean_df["risk_score"] = proba_upload
-                        clean_df["flagged"] = clean_df["risk_score"] >= threshold
+                        clean_df["flagged"] = clean_df["risk_score"] >= active_threshold
 
-                        st.success(f"Scored {len(clean_df)} spike(s).")
+                        st.success(f"Scored {len(clean_df)} spike(s) using the {mode_label} model.")
                         render_metric_cards(
                             clean_df.assign(spike_type=np.where(clean_df["flagged"], "anomalous", "organic")),
                             fn_cost,
                         )
                         st.divider()
 
-                        result_cols = ["risk_score", "flagged"] + feature_cols
+                        result_cols = ["risk_score", "flagged"] + active_cols
                         st.dataframe(
                             style_flagged_rows(clean_df[result_cols].round(3)),
                             use_container_width=True,
@@ -438,24 +479,31 @@ def main():
                         result_csv = clean_df.to_csv(index=False).encode("utf-8")
                         st.download_button("Download scored results", result_csv, "spikeguard_results.csv", "text/csv")
 
-                        st.divider()
-                        up_idx = st.number_input(
-                            "Row index to explain (from table above)", min_value=0,
-                            max_value=max(len(clean_df) - 1, 0), value=0, key="upload_idx",
-                        )
-                        row = clean_df.iloc[up_idx]
-                        X_row = clean_numeric.iloc[[up_idx]].values.astype(float)
-                        proba, explanation_df = explain_row(model, explainer, feature_cols, X_row)
-                        flagged = proba >= threshold
+                        if mode_label == "Confirmed Risk":
+                            st.divider()
+                            up_idx = st.number_input(
+                                "Row index to explain (from table above)", min_value=0,
+                                max_value=max(len(clean_df) - 1, 0), value=0, key="upload_idx",
+                            )
+                            row = clean_df.iloc[up_idx]
+                            X_row = clean_numeric.iloc[[up_idx]].values.astype(float)
+                            proba, explanation_df = explain_row(model, explainer, feature_cols, X_row)
+                            flagged = proba >= threshold
 
-                        verdict = "🚩 FLAGGED as anomalous" if flagged else "✅ Not flagged (organic)"
-                        c1, c2 = st.columns(2)
-                        c1.metric("Risk score", f"{proba:.3f}")
-                        c2.metric("Threshold", f"{threshold:.2f}")
-                        st.markdown(f"### {verdict}")
-                        st.info(plain_english_summary(explanation_df, flagged))
-                        st.bar_chart(explanation_df.set_index("Feature")["Impact on risk score"])
-                        st.dataframe(explanation_df, use_container_width=True)
+                            verdict = "🚩 FLAGGED as anomalous" if flagged else "✅ Not flagged (organic)"
+                            c1, c2 = st.columns(2)
+                            c1.metric("Risk score", f"{proba:.3f}")
+                            c2.metric("Threshold", f"{threshold:.2f}")
+                            st.markdown(f"### {verdict}")
+                            st.info(plain_english_summary(explanation_df, flagged))
+                            st.bar_chart(explanation_df.set_index("Feature")["Impact on risk score"])
+                            st.dataframe(explanation_df, use_container_width=True)
+                        else:
+                            st.caption(
+                                "Row-by-row explanations are only available for Confirmed Risk scores "
+                                "in this version — Early Warning gives a score without a delivery/return "
+                                "history to explain against yet."
+                            )
 
     with tab6:
         st.markdown("""
