@@ -203,6 +203,7 @@ def main():
     )
 
     explainer = shap.TreeExplainer(model)
+    early_explainer = shap.TreeExplainer(early_model) if early_model is not None else None
 
     with tab1:
         test = load_test_data()
@@ -479,30 +480,31 @@ def main():
                         result_csv = clean_df.to_csv(index=False).encode("utf-8")
                         st.download_button("Download scored results", result_csv, "spikeguard_results.csv", "text/csv")
 
-                        if mode_label == "Confirmed Risk":
-                            st.divider()
-                            up_idx = st.number_input(
-                                "Row index to explain (from table above)", min_value=0,
-                                max_value=max(len(clean_df) - 1, 0), value=0, key="upload_idx",
-                            )
-                            row = clean_df.iloc[up_idx]
-                            X_row = clean_numeric.iloc[[up_idx]].values.astype(float)
-                            proba, explanation_df = explain_row(model, explainer, feature_cols, X_row)
-                            flagged = proba >= threshold
+                        st.divider()
+                        up_idx = st.number_input(
+                            "Row index to explain (from table above)", min_value=0,
+                            max_value=max(len(clean_df) - 1, 0), value=0, key="upload_idx",
+                        )
+                        X_row = clean_numeric.iloc[[up_idx]].values.astype(float)
 
-                            verdict = "🚩 FLAGGED as anomalous" if flagged else "✅ Not flagged (organic)"
-                            c1, c2 = st.columns(2)
-                            c1.metric("Risk score", f"{proba:.3f}")
-                            c2.metric("Threshold", f"{threshold:.2f}")
-                            st.markdown(f"### {verdict}")
-                            st.info(plain_english_summary(explanation_df, flagged))
-                            st.bar_chart(explanation_df.set_index("Feature")["Impact on risk score"])
-                            st.dataframe(explanation_df, use_container_width=True)
+                        if mode_label == "Confirmed Risk":
+                            proba, explanation_df = explain_row(model, explainer, active_cols, X_row)
                         else:
+                            proba, explanation_df = explain_row(early_model, early_explainer, active_cols, X_row)
+                        flagged = proba >= active_threshold
+
+                        verdict = "🚩 FLAGGED as anomalous" if flagged else "✅ Not flagged (organic)"
+                        c1, c2 = st.columns(2)
+                        c1.metric("Risk score", f"{proba:.3f}")
+                        c2.metric("Threshold", f"{active_threshold:.2f}")
+                        st.markdown(f"### {verdict}")
+                        st.info(plain_english_summary(explanation_df, flagged))
+                        st.bar_chart(explanation_df.set_index("Feature")["Impact on risk score"])
+                        st.dataframe(explanation_df, use_container_width=True)
+                        if mode_label == "Early Warning":
                             st.caption(
-                                "Row-by-row explanations are only available for Confirmed Risk scores "
-                                "in this version — Early Warning gives a score without a delivery/return "
-                                "history to explain against yet."
+                                "This explanation is based only on order-placement signals — no "
+                                "delivery or return data was used, since none was provided."
                             )
 
     with tab6:
